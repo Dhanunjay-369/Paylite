@@ -1,0 +1,39 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: paylite
+    ports: ["5432:5432"]
+    volumes:
+      - ./scripts/init-test-db.sql:/docker-entrypoint-initdb.d/init-test-db.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d paylite"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    ports: ["6379:6379"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+
+  api:
+    build: .
+    depends_on:
+      db: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    ports: ["8080:8080"]
+    environment:
+      DATABASE_URL: postgres://postgres:postgres@db:5432/paylite?sslmode=disable
+      REDIS_ADDR: redis:6379
+      WEBHOOK_SECRET: dev-webhook-secret
+      # Demo-only knobs: a slow processor widens the race window, and
+      # ENABLE_DEBUG exposes /debug/* so scripts/demo.sh can flip failure modes.
+      ENABLE_DEBUG: "1"
+      PROCESSOR_LATENCY_MS: "200"
+      CHARGE_TIMEOUT_MS: "1000"
